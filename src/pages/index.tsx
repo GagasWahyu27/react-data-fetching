@@ -1,11 +1,134 @@
 import Head from "next/head";
-import Image from "next/image";
-import { Inter } from "next/font/google";
-import styles from "@/styles/Home.module.css";
-
-const inter = Inter({ subsets: ["latin"] });
+import {
+  Button,
+  Container,
+  FormControl,
+  FormLabel,
+  Heading,
+  Input,
+  Spinner,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+  useDisclosure,
+  useToast,
+  VStack,
+} from "@chakra-ui/react";
+import { Product } from "@/lib/type";
+import { useFetchProducts } from "@/features/products/useFetchProducts";
+import { useFormik } from "formik";
+import { ChangeEvent, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { axiosInstance } from "@/lib/axios";
+import { AxiosResponse } from "axios";
+import { useCreateProduct } from "@/features/products/useCreateProduct";
+import ModalConfirm from "./components/ModalConfirm";
 
 export default function Home() {
+  const {
+    data,
+    isLoading: isProductLoading,
+    refetch: refetchProducts,
+  } = useFetchProducts();
+  const products: Product[] = data?.data ?? [];
+
+  const toast = useToast();
+
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(
+    null
+  );
+
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  const formik = useFormik<Omit<Product, "id">>({
+    initialValues: {
+      name: "",
+      price: 0,
+      description: "",
+      image: "",
+    },
+    onSubmit: () => {
+      const { name, price, description, image } = formik.values;
+      createProduct({
+        name,
+        price,
+        description,
+        image,
+      });
+    },
+  });
+
+  const { mutate: createProduct, isPending: isProductPending } =
+    useCreateProduct({
+      onSuccess: () => {
+        formik.resetForm();
+        toast({
+          id: "create_product_popup",
+          title: "Product added successfully",
+          status: "success",
+          duration: 3000,
+          position: "top",
+        });
+        refetchProducts();
+      },
+    });
+
+  const { mutate: deleteProduct, isPending: isProductDeletePending } =
+    useMutation<AxiosResponse<Product>, Error, number>({
+      mutationKey: ["delete_product"],
+      mutationFn: async (id: number) => {
+        console.info("from delete", id);
+        return await axiosInstance.delete(`/products/${id}`);
+      },
+      onSuccess: () => {
+        refetchProducts();
+        toast({
+          id: "delete_product_popup",
+          title: "Product deleted successfully",
+          status: "success",
+          duration: 3000,
+          position: "top",
+        });
+      },
+    });
+
+  const handleDelete = (id: number) => {
+    setSelectedProductId(id);
+    onOpen();
+  };
+
+  // const { mutate, isPending: isProductPending } = useMutation<
+  //   AxiosResponse<Product>,
+  //   Error,
+  //   Omit<Product, "id">
+  // >({
+  //   mutationKey: ["post_products"],
+  //   mutationFn: async (body) => {
+  //     return await axiosInstance.post<Product>("/products", body);
+  //   },
+  //   onSuccess: () => {
+  //     formik.resetForm();
+  //     toast({
+  //       id: "create_product",
+  //       title: "Product added successfully",
+  //       status: "success",
+  //       duration: 3000,
+  //       position: "top",
+  //     });
+  //     refetchProducts();
+  //   },
+  // });
+
+  // const handleChangeInput = (e: ChangeEvent<HTMLInputElement>): void => {
+  //   const { name, value } = e.target;
+  //   formik.setFieldValue(name, value);
+  // };
+
   return (
     <>
       <Head>
@@ -14,100 +137,110 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <main className={`${styles.main} ${inter.className}`}>
-        <div className={styles.description}>
-          <p>
-            Get started by editing&nbsp;
-            <code className={styles.code}>src/pages/index.tsx</code>
-          </p>
-          <div>
-            <a
-              href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              By{" "}
-              <Image
-                src="/vercel.svg"
-                alt="Vercel Logo"
-                className={styles.vercelLogo}
-                width={100}
-                height={24}
-                priority
-              />
-            </a>
-          </div>
-        </div>
-
-        <div className={styles.center}>
-          <Image
-            className={styles.logo}
-            src="/next.svg"
-            alt="Next.js Logo"
-            width={180}
-            height={37}
-            priority
+      <main>
+        <Container maxW="container.lg" px={4}>
+          <Heading my={6}>CRUD Product</Heading>
+          <ModalConfirm
+            isOpen={isOpen}
+            onClose={onClose}
+            onConfirm={() => {
+              if (selectedProductId !== null) deleteProduct(selectedProductId);
+            }}
+            cancelRef={cancelRef}
+            dialogHeader="Delete Product"
+            dialogBody="Are you sure you want to delete this product?"
           />
-        </div>
+          <Table mb={6}>
+            <Thead>
+              <Tr>
+                <Th>Id</Th>
+                <Th>Name</Th>
+                <Th>Price</Th>
+                <Th>Description</Th>
+                <Th>Action</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {isProductLoading ? (
+                <Tr>
+                  <Td colSpan={5} textAlign="center">
+                    <Spinner />
+                  </Td>
+                </Tr>
+              ) : (
+                products.map((product) => {
+                  return (
+                    <Tr key={product.id}>
+                      <Td>{product.id}</Td>
+                      <Td>{product.name}</Td>
+                      <Td>{product.description}</Td>
+                      <Td>{product.price}</Td>
+                      <Td>
+                        <Button
+                          type="submit"
+                          onClick={() => {
+                            handleDelete(product.id);
+                          }}
+                          colorScheme="red"
+                        >
+                          Delete {product.id}
+                        </Button>
+                      </Td>
+                    </Tr>
+                  );
+                })
+              )}
+            </Tbody>
+          </Table>
 
-        <div className={styles.grid}>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2>
-              Docs <span>-&gt;</span>
-            </h2>
-            <p>
-              Find in-depth information about Next.js features and&nbsp;API.
-            </p>
-          </a>
-
-          <a
-            href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2>
-              Learn <span>-&gt;</span>
-            </h2>
-            <p>
-              Learn about Next.js in an interactive course with&nbsp;quizzes!
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2>
-              Templates <span>-&gt;</span>
-            </h2>
-            <p>
-              Discover and deploy boilerplate example Next.js&nbsp;projects.
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2>
-              Deploy <span>-&gt;</span>
-            </h2>
-            <p>
-              Instantly deploy your Next.js site to a shareable URL
-              with&nbsp;Vercel.
-            </p>
-          </a>
-        </div>
+          <form onSubmit={formik.handleSubmit}>
+            <VStack spacing={3}>
+              <FormControl>
+                <FormLabel>Product Name</FormLabel>
+                <Input
+                  onChange={formik.handleChange}
+                  type="text"
+                  name="name"
+                  value={formik.values.name}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Price</FormLabel>
+                <Input
+                  onChange={formik.handleChange}
+                  type="number"
+                  name="price"
+                  value={formik.values.price}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Description</FormLabel>
+                <Input
+                  onChange={formik.handleChange}
+                  type="text"
+                  name="description"
+                  value={formik.values.description}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Image</FormLabel>
+                <Input
+                  onChange={formik.handleChange}
+                  type="text"
+                  name="image"
+                  value={formik.values.image}
+                />
+              </FormControl>
+              {isProductPending ? (
+                <Button type="submit" isDisabled={isProductPending}>
+                  <Spinner></Spinner>
+                </Button>
+              ) : (
+                <Button type="submit">Submit Product</Button>
+              )}
+            </VStack>
+          </form>
+        </Container>
       </main>
     </>
   );
