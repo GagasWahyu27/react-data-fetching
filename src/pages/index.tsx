@@ -88,7 +88,7 @@ export default function Home() {
         position: "top",
       });
     }
-  });
+  }, [isProductFetchingError]);
 
   const { mutate: createProduct, isPending: isProductPending } =
     useCreateProduct({
