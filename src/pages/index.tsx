@@ -18,55 +18,83 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { Product } from "@/lib/type";
-import { useFetchProducts } from "@/features/products/useFetchProducts";
 import { useFormik } from "formik";
-import { ChangeEvent, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { axiosInstance } from "@/lib/axios";
-import { AxiosResponse } from "axios";
-import { useCreateProduct } from "@/features/products/useCreateProduct";
+import { useEffect, useRef, useState } from "react";
 import ModalConfirm from "./components/ModalConfirm";
+import {
+  useFetchProducts,
+  useCreateProduct,
+  useEditProduct,
+  useDeleteProduct,
+} from "@/features/products/index";
+// import { useFetchProducts } from "@/features/products/useFetchProducts";
+// import { useCreateProduct } from "@/features/products/useCreateProduct";
+// import { useEditProduct } from "@/features/products/useEditProduct";
+// import { useDeleteProduct } from "@/features/products/useDeleteProduct";
 
 export default function Home() {
-  const {
-    data,
-    isLoading: isProductLoading,
-    refetch: refetchProducts,
-  } = useFetchProducts();
-  const products: Product[] = data?.data ?? [];
-
   const toast = useToast();
-
   const { isOpen, onOpen, onClose } = useDisclosure();
-
   const [selectedProductId, setSelectedProductId] = useState<number | null>(
     null
   );
-
+  const [editing, setEditing] = useState<boolean>(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  const formik = useFormik<Omit<Product, "id">>({
+  const formik = useFormik<Product>({
     initialValues: {
+      id: 0,
       name: "",
       price: 0,
       description: "",
       image: "",
     },
     onSubmit: () => {
-      const { name, price, description, image } = formik.values;
-      createProduct({
-        name,
-        price,
-        description,
-        image,
-      });
+      const { id, name, price, description, image } = formik.values;
+      if (id) {
+        editProduct({
+          id,
+          name,
+          price,
+          description,
+          image,
+        });
+      } else {
+        createProduct({
+          name,
+          price,
+          description,
+          image,
+        });
+      }
     },
+  });
+
+  const {
+    data,
+    isLoading: isProductLoading,
+    refetch: refetchProducts,
+    isError: isProductFetchingError,
+  } = useFetchProducts();
+  const products: Product[] = data?.data ?? [];
+
+  useEffect(() => {
+    if (isProductFetchingError) {
+      toast({
+        id: "fetch_product_error",
+        title: "Error while fetching products",
+        status: "error",
+        duration: 5000,
+        position: "top",
+      });
+    }
   });
 
   const { mutate: createProduct, isPending: isProductPending } =
     useCreateProduct({
       onSuccess: () => {
         formik.resetForm();
+        refetchProducts();
         toast({
           id: "create_product_popup",
           title: "Product added successfully",
@@ -74,17 +102,27 @@ export default function Home() {
           duration: 3000,
           position: "top",
         });
+      },
+    });
+
+  const { mutate: editProduct, isPending: isProductEditPending } =
+    useEditProduct({
+      onSuccess: () => {
+        formik.resetForm();
         refetchProducts();
+        toast({
+          id: "edit_product_popup",
+          title: "Product updated successfully",
+          status: "success",
+          duration: 3000,
+          position: "top",
+        });
+        setEditing(false);
       },
     });
 
   const { mutate: deleteProduct, isPending: isProductDeletePending } =
-    useMutation<AxiosResponse<Product>, Error, number>({
-      mutationKey: ["delete_product"],
-      mutationFn: async (id: number) => {
-        console.info("from delete", id);
-        return await axiosInstance.delete(`/products/${id}`);
-      },
+    useDeleteProduct({
       onSuccess: () => {
         refetchProducts();
         toast({
@@ -97,37 +135,25 @@ export default function Home() {
       },
     });
 
+  const onEditClick = (body: Product) => {
+    const { id, name, price, description, image } = body;
+    formik.setFieldValue("id", id);
+    formik.setFieldValue("name", name);
+    formik.setFieldValue("price", price);
+    formik.setFieldValue("description", description);
+    formik.setFieldValue("image", image);
+    setEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    formik.resetForm();
+    setEditing(false);
+  };
+
   const handleDelete = (id: number) => {
     setSelectedProductId(id);
     onOpen();
   };
-
-  // const { mutate, isPending: isProductPending } = useMutation<
-  //   AxiosResponse<Product>,
-  //   Error,
-  //   Omit<Product, "id">
-  // >({
-  //   mutationKey: ["post_products"],
-  //   mutationFn: async (body) => {
-  //     return await axiosInstance.post<Product>("/products", body);
-  //   },
-  //   onSuccess: () => {
-  //     formik.resetForm();
-  //     toast({
-  //       id: "create_product",
-  //       title: "Product added successfully",
-  //       status: "success",
-  //       duration: 3000,
-  //       position: "top",
-  //     });
-  //     refetchProducts();
-  //   },
-  // });
-
-  // const handleChangeInput = (e: ChangeEvent<HTMLInputElement>): void => {
-  //   const { name, value } = e.target;
-  //   formik.setFieldValue(name, value);
-  // };
 
   return (
     <>
@@ -157,7 +183,7 @@ export default function Home() {
                 <Th>Name</Th>
                 <Th>Price</Th>
                 <Th>Description</Th>
-                <Th>Action</Th>
+                <Th colSpan={2}>Action</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -179,11 +205,22 @@ export default function Home() {
                         <Button
                           type="submit"
                           onClick={() => {
+                            onEditClick(product);
+                          }}
+                          colorScheme="cyan"
+                        >
+                          Edit
+                        </Button>
+                      </Td>
+                      <Td>
+                        <Button
+                          type="submit"
+                          onClick={() => {
                             handleDelete(product.id);
                           }}
                           colorScheme="red"
                         >
-                          Delete {product.id}
+                          Delete
                         </Button>
                       </Td>
                     </Tr>
@@ -195,6 +232,18 @@ export default function Home() {
 
           <form onSubmit={formik.handleSubmit}>
             <VStack spacing={3}>
+              {editing && (
+                <FormControl>
+                  <FormLabel>Product Id</FormLabel>
+                  <Input
+                    onChange={formik.handleChange}
+                    type="number"
+                    name="id"
+                    value={formik.values.id}
+                    isDisabled={true}
+                  />
+                </FormControl>
+              )}
               <FormControl>
                 <FormLabel>Product Name</FormLabel>
                 <Input
@@ -231,13 +280,23 @@ export default function Home() {
                   value={formik.values.image}
                 />
               </FormControl>
-              {isProductPending ? (
-                <Button type="submit" isDisabled={isProductPending}>
-                  <Spinner></Spinner>
+              {isProductPending || isProductEditPending ? (
+                <Button isDisabled={isProductPending || isProductEditPending}>
+                  <Spinner>Loading</Spinner>
                 </Button>
               ) : (
                 <Button type="submit">Submit Product</Button>
               )}
+              {editing &&
+                (isProductEditPending ? (
+                  <Button isDisabled={isProductEditPending}>
+                    <Spinner>Loading</Spinner>
+                  </Button>
+                ) : (
+                  <Button onClick={handleCancelEdit} colorScheme="red">
+                    Cancel Edit
+                  </Button>
+                ))}
             </VStack>
           </form>
         </Container>

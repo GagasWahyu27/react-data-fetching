@@ -13,8 +13,8 @@ interface UseCreateProductProps {
 
 export const useCreateProduct = ({ onSuccess }: UseCreateProductProps) => {
   return useMutation<AxiosResponse<Product>, Error, Omit<Product, "id">>({
-    mutationKey: ["post_products"],
-    mutationFn: async (body) => {
+    mutationKey: ["post.products"],
+    mutationFn: async (body: Omit<Product, "id">) => {
       return await axiosInstance.post<Product>("/products", body);
     },
     onSuccess,
